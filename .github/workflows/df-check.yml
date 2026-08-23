@@ -2,7 +2,9 @@ name: Disk Usage Report
 
 # Manual trigger only — click "Run workflow" in the Actions tab to run it.
 on:
-  workflow_dispatch:
+  schedule:
+    - cron: '0 * * * *'   # Every hour
+  workflow_dispatch:      # Optional manual trigger
 
 jobs:
   df-check:
