@@ -1,0 +1,64 @@
+name: Disk Usage Report
+
+# Manual trigger only — click "Run workflow" in the Actions tab to run it.
+on:
+  workflow_dispatch:
+
+jobs:
+  df-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      - name: Run df -h on server 1 and collect output
+        run: |
+          {
+            echo "===================================="
+            echo "Server: ${{ secrets.SSH_HOST1 }}"
+            echo "Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            echo "===================================="
+            sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh \
+              -o StrictHostKeyChecking=no \
+              -o ConnectTimeout=15 \
+              "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST1 }}" "df -h"
+            echo ""
+          } >> df_report.txt
+
+      - name: Run df -h on server 2 and collect output
+        run: |
+          {
+            echo "===================================="
+            echo "Server: ${{ secrets.SSH_HOST2 }}"
+            echo "Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            echo "===================================="
+            sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh \
+              -o StrictHostKeyChecking=no \
+              -o ConnectTimeout=15 \
+              "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST2 }}" "df -h"
+            echo ""
+          } >> df_report.txt
+
+      - name: Show collated report in logs
+        run: cat df_report.txt
+
+      - name: Upload report as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: df-report
+          path: df_report.txt
+
+      - name: Email the report
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "Disk Usage Report - ${{ github.run_id }}"
+          to: ${{ secrets.MAIL_TO }}
+          from: ${{ secrets.MAIL_USERNAME }}
+          body: file://df_report.txt
+          attachments: df_report.txt
