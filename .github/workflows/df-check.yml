@@ -49,16 +49,33 @@ jobs:
           name: df-report
           path: df_report.txt
 
-      - name: Email the report
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          secure: true
-          username: ${{ secrets.MAIL_USERNAME }}
-          password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "Disk Usage Report - ${{ github.run_id }}"
-          to: ${{ secrets.MAIL_TO }}
-          from: ${{ secrets.MAIL_USERNAME }}
-          body: file://df_report.txt
-          attachments: df_report.txt
+      - name: Send email via Resend
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+        run: |
+          BODY_TEXT=$(jq -Rs . < df_report.txt)
+          ATTACHMENT_B64=$(base64 -w 0 df_report.txt)
+
+          PAYLOAD=$(jq -n \
+            --arg from "$MAIL_FROM" \
+            --arg to "$MAIL_TO" \
+            --arg subject "Disk Usage Report - ${{ github.run_id }}" \
+            --argjson text "$BODY_TEXT" \
+            --arg content "$ATTACHMENT_B64" \
+            '{from: $from, to: [$to], subject: $subject, text: $text, attachments: [{filename: "df_report.txt", content: $content}]}')
+
+          HTTP_STATUS=$(curl -s -o response.json -w "%{http_code}" -X POST https://api.resend.com/emails \
+            -H "Authorization: Bearer $RESEND_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+
+          echo "Resend API response (HTTP $HTTP_STATUS):"
+          cat response.json
+          echo ""
+
+          if [ "$HTTP_STATUS" -ge 300 ]; then
+            echo "Email send failed."
+            exit 1
+          fi
